@@ -375,6 +375,7 @@ int spgat_get_symmetry_with_collinear_spin(
 }
 
 /* Return 0 if failed */
+/* Need to get rotation and translation before calling this function. */
 int spg_get_symmetry_with_site_tensors(
     int rotation[][3][3], double translation[][3], int equivalent_atoms[],
     double primitive_lattice[3][3], int *spin_flips, const int num_operations,
@@ -387,6 +388,8 @@ int spg_get_symmetry_with_site_tensors(
         num_atom, is_magnetic, symprec, -1.0);
 }
 
+/* Return 0 if failed */
+/* Need to get rotation and translation before calling this function. */
 int spgat_get_symmetry_with_site_tensors(
     int rotation[][3][3], double translation[][3], int equivalent_atoms[],
     double primitive_lattice[3][3], int *spin_flips, const int num_operations,
