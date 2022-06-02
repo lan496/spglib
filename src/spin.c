@@ -95,11 +95,13 @@ MagneticSymmetry *spn_get_operations_with_site_tensors(
         magnetic_symmetry = NULL;
     }
 
-    /* TODO(shinohara): Current implementation may return wrongly small
-     * primitive cell for type-IV MSG. */
     num_pure_trans = 0;
     for (i = 0; i < magnetic_symmetry->size; i++) {
-        if (mat_check_identity_matrix_i3(identity, magnetic_symmetry->rot[i])) {
+        /* Take translation with rot=identity and timerev=false */
+        /* time reversal should be considered for type-IV magnetic space group
+         */
+        if (mat_check_identity_matrix_i3(identity, magnetic_symmetry->rot[i]) &&
+            !magnetic_symmetry->timerev[i]) {
             num_pure_trans++;
         }
     }
@@ -110,7 +112,8 @@ MagneticSymmetry *spn_get_operations_with_site_tensors(
 
     num_pure_trans = 0;
     for (i = 0; i < magnetic_symmetry->size; i++) {
-        if (mat_check_identity_matrix_i3(identity, magnetic_symmetry->rot[i])) {
+        if (mat_check_identity_matrix_i3(identity, magnetic_symmetry->rot[i]) &&
+            !magnetic_symmetry->timerev[i]) {
             mat_copy_vector_d3(pure_trans->vec[num_pure_trans],
                                magnetic_symmetry->trans[i]);
             num_pure_trans++;
@@ -161,12 +164,11 @@ static MagneticSymmetry *get_operations(const Symmetry *sym_nonspin,
     num_sym = 0;
 
     for (i = 0; i < sym_nonspin->size; i++) {
-        /* When is_magnetic=true, found becomes true if (rot[i], trans[i]) */
+        /* When is_magnetic=true, found becomes true if (rot, trans) */
         /* in family space group. */
-        /* When is_magnetic=false, found becomes true if (rot[i], trans[i]) */
+        /* When is_magnetic=false, found becomes true if (rot, trans) */
         /* in maximal space subgroup. */
         found = 1;
-        spin_flips[i] = 0;
 
         /* Set sign as undetermined */
         determined = 0;
@@ -292,6 +294,8 @@ static MagneticSymmetry *get_operations(const Symmetry *sym_nonspin,
                 mat_copy_vector_d3(trans->vec[num_sym], sym_nonspin->trans[i]);
                 num_sym++;
             }
+        } else {
+            spin_flips[num_sym] = 0; /* Cannot use `i` for index here! */
         }
     }
 
@@ -299,7 +303,7 @@ static MagneticSymmetry *get_operations(const Symmetry *sym_nonspin,
     for (i = 0; i < num_sym; i++) {
         mat_copy_matrix_i3(magnetic_symmetry->rot[i], rotations->mat[i]);
         mat_copy_vector_d3(magnetic_symmetry->trans[i], trans->vec[i]);
-        magnetic_symmetry->timerev[i] = spin_flips[i];
+        magnetic_symmetry->timerev[i] = (1 - spin_flips[i]) / 2;
     }
 
     mat_free_MatINT(rotations);

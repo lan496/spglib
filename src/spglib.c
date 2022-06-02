@@ -384,7 +384,7 @@ int spg_get_symmetry_with_site_tensors(
     const int num_atom, const int is_magnetic, const double symprec) {
     return get_symmetry_with_site_tensors(
         rotation, translation, equivalent_atoms, primitive_lattice, spin_flips,
-        0, num_operations, lattice, position, types, tensors, tensor_rank,
+        1, num_operations, lattice, position, types, tensors, tensor_rank,
         num_atom, is_magnetic, symprec, -1.0);
 }
 
@@ -399,7 +399,7 @@ int spgat_get_symmetry_with_site_tensors(
     const double angle_tolerance) {
     return get_symmetry_with_site_tensors(
         rotation, translation, equivalent_atoms, primitive_lattice, spin_flips,
-        0, num_operations, lattice, position, types, tensors, tensor_rank,
+        1, num_operations, lattice, position, types, tensors, tensor_rank,
         num_atom, is_magnetic, symprec, angle_tolerance);
 }
 
@@ -1367,7 +1367,8 @@ static int get_symmetry_with_site_tensors(
     for (i = 0; i < magnetic_symmetry->size; i++) {
         mat_copy_matrix_i3(rotation[i], magnetic_symmetry->rot[i]);
         mat_copy_vector_d3(translation[i], magnetic_symmetry->trans[i]);
-        spin_flips[i] = magnetic_symmetry->timerev[i];
+        /* spin_flip=1 for timerev=true, spin_flip=-1 for timerev=false */
+        spin_flips[i] = 1 - 2 * magnetic_symmetry->timerev[i];
     }
     size = magnetic_symmetry->size;
 
