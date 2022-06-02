@@ -294,8 +294,6 @@ static MagneticSymmetry *get_operations(const Symmetry *sym_nonspin,
                 mat_copy_vector_d3(trans->vec[num_sym], sym_nonspin->trans[i]);
                 num_sym++;
             }
-        } else {
-            spin_flips[num_sym] = 0; /* Cannot use `i` for index here! */
         }
     }
 
@@ -303,7 +301,12 @@ static MagneticSymmetry *get_operations(const Symmetry *sym_nonspin,
     for (i = 0; i < num_sym; i++) {
         mat_copy_matrix_i3(magnetic_symmetry->rot[i], rotations->mat[i]);
         mat_copy_vector_d3(magnetic_symmetry->trans[i], trans->vec[i]);
-        magnetic_symmetry->timerev[i] = (1 - spin_flips[i]) / 2;
+        if (is_magnetic) {
+            magnetic_symmetry->timerev[i] = (1 - spin_flips[i]) / 2;
+        } else {
+            /* fill as ordinary operation */
+            magnetic_symmetry->timerev[i] = 0;
+        }
     }
 
     mat_free_MatINT(rotations);
