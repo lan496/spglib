@@ -46,8 +46,7 @@
 static Symmetry *get_operations(int *spin_flips, const Symmetry *sym_nonspin,
                                 const Cell *cell, const double *tensors,
                                 const int tensor_rank, const int is_magnetic,
-                                const int is_axial, const int allow_type2,
-                                const double symprec);
+                                const int is_axial, const double symprec);
 static int set_equivalent_atoms(int *equiv_atoms, const Symmetry *symmetry,
                                 const Cell *cell, const double symprec);
 static int *get_mapping_table(const Symmetry *symmetry, const Cell *cell,
@@ -82,9 +81,9 @@ Symmetry *spn_get_operations_with_site_tensors(
         is_axial = 0;
     }
 
-    if ((symmetry = get_operations(spin_flips, sym_nonspin, cell, tensors,
-                                   tensor_rank, is_magnetic, is_axial,
-                                   0 /* allow_type2 */, symprec)) == NULL) {
+    if ((symmetry =
+             get_operations(spin_flips, sym_nonspin, cell, tensors, tensor_rank,
+                            is_magnetic, is_axial, symprec)) == NULL) {
         return NULL;
     }
 
@@ -132,13 +131,10 @@ Symmetry *spn_get_operations_with_site_tensors(
 /* spin_flips can be NULL if is_magnetic==false. */
 /* is_axial: If true, tensors with tensor_rank==1 do not change by */
 /*           spatial inversion */
-/* allow_type2: If true, number of operations is doubled fro type-II MSG. */
-/*            : Set false for backward compatibility. */
 static Symmetry *get_operations(int *spin_flips, const Symmetry *sym_nonspin,
                                 const Cell *cell, const double *tensors,
                                 const int tensor_rank, const int is_magnetic,
-                                const int is_axial, const int allow_type2,
-                                const double symprec) {
+                                const int is_axial, const double symprec) {
     Symmetry *symmetry;
     int i, j, k, sign, num_sym, found, determined;
     double pos[3];
@@ -241,24 +237,16 @@ static Symmetry *get_operations(int *spin_flips, const Symmetry *sym_nonspin,
             }
         }
         if (found) {
-            /* (is_magnetic, allow_type2, determined, sign) */
-            /* (true,  true,       true,  1/-1) -> accept */
-            /* (true,  true,       false, 0)    -> take both sign 1/-1 */
-            /* (true,  false,      true,  1/-1) -> accept */
-            /* (true,  false,      false, 0)    -> reject */
-            /* (false, true/false, true,  1)    -> accept */
-            /* (false, true/false, true,  -1)   -> not occurred */
-            /* (false, true/false, false, 0)    -> accept */
-            if (!determined && !allow_type2) {
-                /* This is type-II MSG, but allow_type2 is set false */
-                continue;
-            }
-
+            /* (is_magnetic, determined, sign) */
+            /* (true,        true,       1/-1) -> accept */
+            /* (true,        false,      0)    -> take both sign 1/-1 */
+            /* (false,       true,       1)    -> accept */
+            /* (false,       true,       -1)   -> not occurred */
+            /* (false,       false,      0)    -> accept */
             if (determined) {
-                /* (is_magnetic, allow_type2, determined, sign) */
-                /* (true,  true,       true,  1/-1) */
-                /* (true,  false,      true,  1/-1) */
-                /* (false, true/false, true,  1)    */
+                /* (is_magnetic, determined, sign) */
+                /* (true,        true,       1/-1) -> accept */
+                /* (false,       true,       1)    -> accept */
                 mat_copy_matrix_i3(rotations->mat[num_sym],
                                    sym_nonspin->rot[i]);
                 mat_copy_vector_d3(trans->vec[num_sym], sym_nonspin->trans[i]);
@@ -267,8 +255,8 @@ static Symmetry *get_operations(int *spin_flips, const Symmetry *sym_nonspin,
                 }
                 num_sym++;
             } else if (is_magnetic) {
-                /* (is_magnetic, allow_type2, determined, sign) */
-                /* (true,  true,       false, 0) -> take both sign 1/-1 */
+                /* (is_magnetic, determined, sign) */
+                /* (true,        false,      0)    -> take both sign 1/-1 */
 
                 /* sign=1 */
                 mat_copy_matrix_i3(rotations->mat[num_sym],
@@ -284,8 +272,8 @@ static Symmetry *get_operations(int *spin_flips, const Symmetry *sym_nonspin,
                 spin_flips[num_sym] = -1;
                 num_sym++;
             } else {
-                /* (is_magnetic, allow_type2, determined, sign) */
-                /* (false, true/false, false, 0) */
+                /* (is_magnetic, determined, sign) */
+                /* (false,       false,      0) */
                 mat_copy_matrix_i3(rotations->mat[num_sym],
                                    sym_nonspin->rot[i]);
                 mat_copy_vector_d3(trans->vec[num_sym], sym_nonspin->trans[i]);
