@@ -81,6 +81,10 @@ class TestGetOperationsWithSiteTensors(unittest.TestCase):
         self.assertEqual(len(sym2['rotations']), 16)
         self.assertEqual(np.sum(sym2['time_reversals']), 8)
 
+        sym2_gray = get_symmetry(self._cell_CrCl2 + (magmoms2, ), is_magnetic=False)
+        self.assertTrue(np.allclose(sym2_gray['rotations'], sym['rotations']))
+        self.assertTrue(np.allclose(sym2_gray['translations'], sym['translations']))
+
         # Type-III MSG
         # 58.397: -P 2 2n'
         # Generators: -x,-y,-z; -x,-y,z; -x+1/2,y+1/2,-z+1/2'
