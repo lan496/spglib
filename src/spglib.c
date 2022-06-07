@@ -46,6 +46,7 @@
 #include "determination.h"
 #include "kgrid.h"
 #include "kpoint.h"
+#include "magnetic_spacegroup.h"
 #include "mathfunc.h"
 #include "msg_database.h"
 #include "niggli.h"

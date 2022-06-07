@@ -298,6 +298,7 @@ int spg_get_symmetry_from_database(int rotations[192][3][3],
                                    double translations[192][3],
                                    const int hall_number);
 
+/* This is unstable feature under active development! */
 /* Magnetic space-group operations in built-in database are accessed by UNI */
 /* number, which is defined as number from 1 to 1651. Optionally alternative */
 /* settings can be specified with hall_number. For type-I, type-II, and */
@@ -316,6 +317,7 @@ int spg_get_magnetic_symmetry_from_database(int rotations[384][3][3],
 /* The index is defined as number from 1 to 530. */
 SpglibSpacegroupType spg_get_spacegroup_type(const int hall_number);
 
+/* This is unstable feature under active development! */
 /* Magnetic space-group type information is accessed by index of UNI symbol. */
 /* The index is defined as number from 1 to 1651. */
 SpglibMagneticSpacegroupType spg_get_magnetic_spacegroup_type(
