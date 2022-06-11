@@ -27,6 +27,8 @@ static int test_spg_get_symmetry_from_database(void);
 static int test_spg_get_magnetic_symmetry_from_database(void);
 static int test_spg_refine_cell_BCC(void);
 static int test_spg_get_dataset(void);
+static int test_spg_get_magnetic_dataset(void);
+static int test_spg_get_magnetic_dataset_type4(void);
 static int test_spg_get_ir_reciprocal_mesh(void);
 static int test_spg_get_stabilized_reciprocal_mesh(void);
 static int test_spg_relocate_BZ_grid_address(void);
@@ -59,6 +61,7 @@ int main(void) {
                             test_spg_get_magnetic_symmetry_from_database,
                             test_spg_refine_cell_BCC,
                             test_spg_get_dataset,
+                            test_spg_get_magnetic_dataset,
                             test_spg_get_ir_reciprocal_mesh,
                             test_spg_get_stabilized_reciprocal_mesh,
                             test_spg_relocate_BZ_grid_address,
@@ -798,6 +801,116 @@ static int test_spg_get_dataset(void) {
         return 1;
     }
 
+    return 0;
+}
+
+static int test_spg_get_magnetic_dataset(void) {
+    /* Rutile structure (P4_2/mnm) */
+    /* Generators: -y+1/2,x+1/2,z+1/2; -x+1/2,y+1/2,-z+1/2; -x,-y,-z */
+    double lattice[3][3] = {{5, 0, 0}, {0, 5, 0}, {0, 0, 3}};
+    double position[][3] = {
+        /* Ti (2a) */
+        {0, 0, 0},
+        {0.5, 0.5, 0.5},
+        /* O (4f) */
+        {0.3, 0.3, 0},
+        {0.7, 0.7, 0},
+        {0.2, 0.8, 0.5},
+        {0.8, 0.2, 0.5},
+    };
+    int types[] = {1, 1, 2, 2, 2, 2};
+    double spins[6];
+    int num_atom = 6;
+    SpglibMagneticDataset *dataset;
+
+    /* Type-I, 136.495: -P 4n 2n */
+    {
+        printf("*** spg_get_magnetic_dataset (type-I, ferro) ***:\n");
+        spins[0] = 0.3;
+        spins[1] = 0.3;
+        spins[2] = 0;
+        spins[3] = 0;
+        spins[4] = 0;
+        spins[5] = 0;
+        dataset = spg_get_magnetic_dataset(lattice, position, types, spins,
+                                           0 /* tensor_rank */, num_atom, 1e-5);
+        assert(dataset->msg_type == 1);
+        assert(dataset->uni_number == 1155);
+
+        spg_free_magnetic_dataset(dataset);
+    }
+
+    /* Type-II, "136.496": -P 4n 2n 1' */
+    {
+        printf("*** spg_get_magnetic_dataset (type-II, gray) ***:\n");
+        spins[0] = 0;
+        spins[1] = 0;
+        spins[2] = 0;
+        spins[3] = 0;
+        spins[4] = 0;
+        spins[5] = 0;
+        dataset = spg_get_magnetic_dataset(lattice, position, types, spins,
+                                           0 /* tensor_rank */, num_atom, 1e-5);
+        assert(dataset->msg_type == 2);
+        assert(dataset->uni_number == 1156);
+
+        spg_free_magnetic_dataset(dataset);
+    }
+
+    /* Type-III, "136.498": -P 4n' 2n' */
+    {
+        printf("*** spg_get_magnetic_dataset (type-III, antiferro) ***:\n");
+        spins[0] = 0.7;
+        spins[1] = -0.7;
+        spins[2] = 0;
+        spins[3] = 0;
+        spins[4] = 0;
+        spins[5] = 0;
+        dataset = spg_get_magnetic_dataset(lattice, position, types, spins,
+                                           0 /* tensor_rank */, num_atom, 1e-5);
+        assert(dataset->msg_type == 3);
+        assert(dataset->uni_number == 1158);
+
+        spg_free_magnetic_dataset(dataset);
+    }
+    return 0;
+}
+
+static int test_spg_get_magnetic_dataset_type4(void) {
+    /* double Rutile structure (P4_2/mnm) */
+    double lattice[3][3] = {{5, 0, 0}, {0, 5, 0}, {0, 0, 6}};
+    double position[][3] = {
+        /* Ti (2a) */
+        {0, 0, 0},
+        {0.5, 0.5, 0.25},
+        /* O (4f) */
+        {0.3, 0.3, 0},
+        {0.7, 0.7, 0},
+        {0.2, 0.8, 0.25},
+        {0.8, 0.2, 0.25},
+        /* Ti (2a) */
+        {0, 0, 0.5},
+        {0.5, 0.5, 0.75},
+        /* O (4f) */
+        {0.3, 0.3, 0.5},
+        {0.7, 0.7, 0.5},
+        {0.2, 0.8, 0.75},
+        {0.8, 0.2, 0.75},
+    };
+    int types[] = {1, 1, 2, 2, 2, 2, 1, 1, 2, 2, 2, 2};
+    double spins[] = {0.3, 0.3, 0, 0, 0, 0, -0.3, -0.3, 0, 0, 0, 0};
+    int num_atom = 12;
+    SpglibMagneticDataset *dataset;
+
+    printf("*** spg_get_magnetic_dataset_type4 ***:\n");
+
+    /* "136.504": -P 4n 2n 1c' */
+    dataset = spg_get_magnetic_dataset(lattice, position, types, spins,
+                                       0 /* tensor_rank */, num_atom, 1e-5);
+    assert(dataset->msg_type == 4);
+    assert(dataset->uni_number == 932);
+
+    spg_free_magnetic_dataset(dataset);
     return 0;
 }
 

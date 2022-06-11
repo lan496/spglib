@@ -95,10 +95,22 @@ static SpglibDataset *get_layer_dataset(
     SPGCONST double lattice[3][3], SPGCONST double position[][3],
     const int types[], const int num_atom, const int aperiodic_axis,
     const int hall_number, const double symprec, const double angle_tolerance);
+static SpglibMagneticDataset *get_magnetic_dataset(
+    SPGCONST double lattice[3][3], SPGCONST double position[][3],
+    const int types[], const double *tensors, const int tensor_rank,
+    const int num_atom, const int hall_number, const double symprec,
+    const double angle_tolerance);
 static SpglibDataset *init_dataset(void);
+static SpglibMagneticDataset *init_magnetic_dataset(void);
 static int set_dataset(SpglibDataset *dataset, const Cell *cell,
                        const Primitive *primitive,
                        SPGCONST Spacegroup *spacegroup, ExactStructure *exstr);
+static int set_magnetic_dataset(SpglibMagneticDataset *dataset,
+                                const Cell *cell,
+                                const MagneticSymmetry *magnetic_symmetry,
+                                SPGCONST MagneticDataset *msgdata,
+                                const int *equivalent_atoms,
+                                SPGCONST double primitive_lattice[3][3]);
 static int get_symmetry_from_dataset(
     int rotation[][3][3], double translation[][3], const int max_size,
     SPGCONST double lattice[3][3], SPGCONST double position[][3],
@@ -230,6 +242,14 @@ SpglibDataset *spg_get_layer_dataset(SPGCONST double lattice[3][3],
                              0, symprec, -1.0);
 }
 
+SpglibMagneticDataset *spg_get_magnetic_dataset(
+    SPGCONST double lattice[3][3], SPGCONST double position[][3],
+    const int types[], const double *tensors, const int tensor_rank,
+    const int num_atom, const double symprec) {
+    return get_magnetic_dataset(lattice, position, types, tensors, tensor_rank,
+                                num_atom, 0, symprec, -1.0);
+}
+
 /* Return NULL if failed */
 SpglibDataset *spgat_get_dataset(SPGCONST double lattice[3][3],
                                  SPGCONST double position[][3],
@@ -249,6 +269,14 @@ SpglibDataset *spg_get_dataset_with_hall_number(SPGCONST double lattice[3][3],
                                                 const double symprec) {
     return get_dataset(lattice, position, types, num_atom, hall_number, symprec,
                        -1.0);
+}
+
+SpglibMagneticDataset *spg_get_magnetic_dataset_with_hall_number(
+    SPGCONST double lattice[3][3], SPGCONST double position[][3],
+    const int types[], const double *tensors, const int tensor_rank,
+    const int num_atom, const int hall_number, const double symprec) {
+    return get_magnetic_dataset(lattice, position, types, tensors, tensor_rank,
+                                num_atom, hall_number, symprec, -1.0);
 }
 
 /* Return NULL if failed */
@@ -300,6 +328,27 @@ void spg_free_dataset(SpglibDataset *dataset) {
     strcpy(dataset->choice, "");
 
     free(dataset);
+}
+
+void spg_free_magnetic_dataset(SpglibMagneticDataset *dataset) {
+    /* Magnetic symmetry operations */
+    if (dataset->n_operations > 0) {
+        free(dataset->rotations);
+        dataset->rotations = NULL;
+        free(dataset->translations);
+        dataset->translations = NULL;
+        free(dataset->time_reversals);
+        dataset->time_reversals = NULL;
+    }
+
+    /* Equivalent atoms */
+    if (dataset->n_atoms > 0) {
+        free(dataset->equivalent_atoms);
+        dataset->equivalent_atoms = NULL;
+    }
+
+    free(dataset);
+    dataset = NULL;
 }
 
 /* Return 0 if failed */
@@ -1053,6 +1102,119 @@ found:
     return dataset;
 }
 
+/* Return NULL if failed */
+static SpglibMagneticDataset *get_magnetic_dataset(
+    SPGCONST double lattice[3][3], SPGCONST double position[][3],
+    const int types[], const double *tensors, const int tensor_rank,
+    const int num_atom, const int hall_number, const double symprec,
+    const double angle_tolerance) {
+    int max_size, num_sym_fsg, num_sym_xsg;
+    Cell *cell;
+    Spacegroup *fsg, *xsg;
+    MagneticSymmetry *magnetic_symmetry, *representative;
+    MagneticDataset *msgdata;
+    SpglibMagneticDataset *dataset;
+    int *equivalent_atoms;
+    double primitive_lattice[3][3];
+
+    cell = NULL;
+    fsg = NULL;
+    xsg = NULL;
+    magnetic_symmetry = NULL;
+    representative = NULL;
+    msgdata = NULL;
+    dataset = NULL;
+
+    max_size = num_atom * 96;
+
+    if (hall_number != 0) {
+        debug_print("TODO(shinohara): Not implemented!");
+        spglib_error_code = SPGERR_SPACEGROUP_SEARCH_FAILED;
+        goto finalize;
+    }
+
+    /* Set cell and check overlapped atoms */
+    if ((cell = cel_alloc_cell(num_atom)) == NULL) {
+        spglib_error_code = SPGERR_SPACEGROUP_SEARCH_FAILED;
+        goto finalize;
+    }
+    cel_set_cell(cell, lattice, position, types);
+    if (cel_any_overlap_with_same_type(cell, symprec)) {
+        spglib_error_code = SPGERR_ATOMS_TOO_CLOSE;
+        goto finalize;
+    }
+
+    if ((equivalent_atoms = (int *)malloc(sizeof(int) * num_atom)) == NULL) {
+        spglib_error_code = SPGERR_SYMMETRY_OPERATION_SEARCH_FAILED;
+        goto finalize;
+    }
+
+    if ((dataset = init_magnetic_dataset()) == NULL) {
+        spglib_error_code = SPGERR_SPACEGROUP_SEARCH_FAILED;
+        goto finalize;
+    }
+
+    /* Get magnetic symmetry operations of MSG */
+    if ((magnetic_symmetry = get_symmetry_with_site_tensors(
+             equivalent_atoms, primitive_lattice, max_size, lattice, position,
+             types, tensors, tensor_rank, num_atom, 1, /* is_magnetic */
+             symprec, angle_tolerance)) == NULL) {
+        spglib_error_code = SPGERR_SYMMETRY_OPERATION_SEARCH_FAILED;
+        goto finalize;
+    }
+    debug_print("MSG: order=%d\n", magnetic_symmetry->size);
+
+    /* Identify family space group (FSG) and maximal space group (XSG) */
+    msgdata =
+        msg_identify_magnetic_space_group_type(magnetic_symmetry, symprec);
+
+    /* Standardized cell */
+
+    if (!set_magnetic_dataset(dataset, cell, magnetic_symmetry, msgdata,
+                              equivalent_atoms, primitive_lattice)) {
+        spglib_error_code = SPGERR_NONE;
+        goto finalize;
+    }
+
+    spglib_error_code = SPGLIB_SUCCESS;
+
+finalize:
+    if (cell != NULL) {
+        cel_free_cell(cell);
+        cell = NULL;
+    }
+    if (equivalent_atoms != NULL) {
+        free(equivalent_atoms);
+        equivalent_atoms = NULL;
+    }
+    if (magnetic_symmetry != NULL) {
+        sym_free_magnetic_symmetry(magnetic_symmetry);
+        magnetic_symmetry = NULL;
+    }
+    if (fsg != NULL) {
+        free(fsg);
+        fsg = NULL;
+    }
+    if (xsg != NULL) {
+        free(xsg);
+        xsg = NULL;
+    }
+    if (representative != NULL) {
+        sym_free_magnetic_symmetry(representative);
+        representative = NULL;
+    }
+    if (msgdata != NULL) {
+        free(msgdata);
+        msgdata = NULL;
+    }
+
+    if (spglib_error_code == SPGLIB_SUCCESS) {
+        return dataset;
+    } else {
+        return NULL;
+    }
+}
+
 static SpglibDataset *init_dataset(void) {
     int i, j;
     SpglibDataset *dataset;
@@ -1091,6 +1253,49 @@ static SpglibDataset *init_dataset(void) {
     dataset->std_mapping_to_primitive = NULL;
     /* dataset->pointgroup_number = 0; */
     strcpy(dataset->pointgroup_symbol, "");
+
+    return dataset;
+}
+
+/* If failed, return NULL. */
+static SpglibMagneticDataset *init_magnetic_dataset(void) {
+    int i, j;
+    SpglibMagneticDataset *dataset;
+
+    dataset = NULL;
+
+    if ((dataset = (SpglibMagneticDataset *)malloc(
+             sizeof(SpglibMagneticDataset))) == NULL) {
+        warning_print("spglib: Memory could not be allocated.");
+        return NULL;
+    }
+
+    dataset->uni_number = 0;
+    dataset->msg_type = 0;
+    dataset->hall_number = 0;
+    dataset->n_operations = 0;
+    dataset->rotations = NULL;
+    dataset->translations = NULL;
+    dataset->time_reversals = NULL;
+    dataset->n_atoms = 0;
+    dataset->equivalent_atoms = NULL;
+    /*
+    dataset->n_std_atoms = 0;
+    dataset->std_types = NULL;
+    dataset->std_positions = NULL;
+    */
+
+    for (i = 0; i < 3; i++) {
+        dataset->origin_shift[i] = 0;
+
+        for (j = 0; j < 3; j++) {
+            dataset->transformation_matrix[i][j] = 0;
+            /*
+            dataset->std_lattice[i][j] = 0;
+            */
+            dataset->primitive_lattice[i][j] = 0;
+        }
+    }
 
     return dataset;
 }
@@ -1264,6 +1469,93 @@ err:
     if (dataset->rotations != NULL) {
         free(dataset->rotations);
         dataset->rotations = NULL;
+    }
+
+    return 0;
+}
+
+static int set_magnetic_dataset(SpglibMagneticDataset *dataset,
+                                const Cell *cell,
+                                const MagneticSymmetry *magnetic_symmetry,
+                                SPGCONST MagneticDataset *msgdata,
+                                const int *equivalent_atoms,
+                                SPGCONST double primitive_lattice[3][3]) {
+    int i;
+
+    /* Magnetic space-group type */
+    dataset->uni_number = msgdata->uni_number;
+    dataset->msg_type = msgdata->msg_type;
+    dataset->hall_number = msgdata->hall_number;
+
+    /* Magnetic symmetry operations */
+    dataset->n_operations = magnetic_symmetry->size;
+    if ((dataset->rotations = (int(*)[3][3])malloc(
+             sizeof(int[3][3]) * dataset->n_operations)) == NULL) {
+        warning_print("spglib: Memory could not be allocated.");
+        goto err;
+    }
+    if ((dataset->translations = (double(*)[3])malloc(
+             sizeof(double[3]) * dataset->n_operations)) == NULL) {
+        warning_print("spglib: Memory could not be allocated.");
+        goto err;
+    }
+    if ((dataset->time_reversals =
+             (int *)malloc(sizeof(int *) * dataset->n_operations)) == NULL) {
+        warning_print("spglib: Memory could not be allocated.");
+        goto err;
+    }
+    for (i = 0; i < dataset->n_operations; i++) {
+        mat_copy_matrix_i3(dataset->rotations[i], magnetic_symmetry->rot[i]);
+        mat_copy_vector_d3(dataset->translations[i],
+                           magnetic_symmetry->trans[i]);
+        dataset->time_reversals[i] = magnetic_symmetry->timerev[i];
+    }
+
+    /* Equivalent atoms */
+    dataset->n_atoms = cell->size;
+    if ((dataset->equivalent_atoms =
+             (int *)malloc(sizeof(int) * dataset->n_atoms)) == NULL) {
+        warning_print("spglib: Memory could not be allocated.");
+        goto err;
+    }
+    for (i = 0; i < dataset->n_atoms; i++) {
+        dataset->equivalent_atoms[i] = equivalent_atoms[i];
+    }
+
+    /* Transformation to standardized setting */
+    mat_copy_matrix_d3(dataset->transformation_matrix,
+                       msgdata->transformation_matrix);
+    mat_copy_vector_d3(dataset->origin_shift, msgdata->origin_shift);
+
+    /* Standardized crystal structure */
+    /*
+    int n_std_atoms;
+    double std_lattice[3][3];
+    int *std_types;
+    double(*std_positions)[3];
+    */
+
+    /* Intermidiate datum in symmetry search */
+    mat_copy_matrix_d3(dataset->primitive_lattice, primitive_lattice);
+
+    return 1;
+
+err:
+    if (dataset->rotations != NULL) {
+        free(dataset->rotations);
+        dataset->rotations = NULL;
+    }
+    if (dataset->translations != NULL) {
+        free(dataset->translations);
+        dataset->translations = NULL;
+    }
+    if (dataset->time_reversals != NULL) {
+        free(dataset->time_reversals);
+        dataset->time_reversals = NULL;
+    }
+    if (dataset->equivalent_atoms != NULL) {
+        free(dataset->equivalent_atoms);
+        dataset->equivalent_atoms = NULL;
     }
 
     return 0;

@@ -151,6 +151,32 @@ typedef struct {
 } SpglibSpacegroupType;
 
 typedef struct {
+    /* Magnetic space-group type */
+    int uni_number;
+    int msg_type;
+    int hall_number; /* For type-I, II, III, Hall number of FSG; for type-IV,
+                        that of XSG */
+    /* Magnetic symmetry operations */
+    int n_operations;
+    int (*rotations)[3][3];
+    double (*translations)[3];
+    int *time_reversals;
+    /* Equivalent atoms */
+    int n_atoms;
+    int *equivalent_atoms;
+    /* Transformation to standardized setting */
+    double transformation_matrix[3][3];
+    double origin_shift[3];
+    /* TODO(shinohara): Standardized crystal structure */
+    /* int n_std_atoms; */
+    /* double std_lattice[3][3]; */
+    /* int *std_types; */
+    /* double (*std_positions)[3]; */
+    /* Intermidiate datum in symmetry search */
+    double primitive_lattice[3][3];
+} SpglibMagneticDataset;
+
+typedef struct {
     int uni_number;
     int litvin_number;
     char bns_number[8];
@@ -177,6 +203,12 @@ SpglibDataset *spg_get_layer_dataset(SPGCONST double lattice[3][3],
                                      const int aperiodic_axis,
                                      const double symprec);
 
+/* This is unstable feature under active development! */
+SpglibMagneticDataset *spg_get_magnetic_dataset(
+    SPGCONST double lattice[3][3], SPGCONST double position[][3],
+    const int types[], const double *tensors, const int tensor_rank,
+    const int num_atom, const double symprec);
+
 SpglibDataset *spgat_get_dataset(SPGCONST double lattice[3][3],
                                  SPGCONST double position[][3],
                                  const int types[], const int num_atom,
@@ -191,6 +223,12 @@ SpglibDataset *spg_get_dataset_with_hall_number(SPGCONST double lattice[3][3],
                                                 const int hall_number,
                                                 const double symprec);
 
+/* This is unstable feature under active development! */
+SpglibMagneticDataset *spg_get_magnetic_dataset_with_hall_number(
+    SPGCONST double lattice[3][3], SPGCONST double position[][3],
+    const int types[], const double *tensors, const int tensor_rank,
+    const int num_atom, const int hall_number, const double symprec);
+
 /* hall_number = 0 gives the same as spgat_get_dataset. */
 SpglibDataset *spgat_get_dataset_with_hall_number(
     SPGCONST double lattice[3][3], SPGCONST double position[][3],
@@ -198,6 +236,7 @@ SpglibDataset *spgat_get_dataset_with_hall_number(
     const double symprec, const double angle_tolerance);
 
 void spg_free_dataset(SpglibDataset *dataset);
+void spg_free_magnetic_dataset(SpglibMagneticDataset *dataset);
 
 /* Find symmetry operations. The operations are stored in */
 /* ``rotation`` and ``translation``. The number of operations is */
