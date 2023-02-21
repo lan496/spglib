@@ -1,27 +1,31 @@
-name: spglib test using conda
+name: test
+run-name: Run tests
 
 on:
   push:
     branches-ignore:
       - rc
-      - master
   pull_request:
     branches: [develop]
 
 jobs:
+  pre-commit:
+    name: Check pre-commit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
+      - uses: pre-commit/action@v3.0.0
   pytest-linux:
     runs-on: ubuntu-latest
+    needs: [ctest-linux]
     strategy:
-      matrix:
-        python-version: ["3.9"]
       fail-fast: true
 
     steps:
-    - uses: actions/checkout@v2
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v2
-      with:
-        python-version: ${{ matrix.python-version }}
+    - uses: actions/checkout@v3
+    - name: Set up Python
+      uses: actions/setup-python@v4
     - name: Add conda to system path
       run: |
         # $CONDA is an environment variable pointing to the root of the miniconda directory
@@ -46,6 +50,7 @@ jobs:
 
   ctest-linux:
     runs-on: ubuntu-latest
+    needs: [pre-commit]
 
     steps:
     - uses: actions/checkout@v3
@@ -62,36 +67,28 @@ jobs:
 
   docs:
     runs-on: ubuntu-latest
+    needs: [ctest-linux, pytest-linux]
 
     steps:
     - uses: actions/checkout@v3
-
     - uses: actions/setup-python@v4
-      with:
-        python-version: "3.9"
-
     - name: Install dependencies
       run: |
         sudo apt-get install -y pandoc
-
     - name: Add conda to system path
       run: |
         # $CONDA is an environment variable pointing to the root of the miniconda directory
         echo $CONDA/bin >> $GITHUB_PATH
-
     - name: Install dependencies
       run: |
         conda install --yes -c conda-forge python=3.9
         conda install --yes -c conda-forge numpy gcc_linux-64 pip pyyaml make cmake scikit-build-core
-
     - name: Setup spglib with doc's dependencies
       run: |
         pip install .[doc]
-
     - name: Build
       run: |
         sphinx-build doc docs_build
-
     - name: Deploy docs at develop branch
       if: ${{ github.ref == 'refs/heads/develop' }}
       uses: peaceiris/actions-gh-pages@v3
