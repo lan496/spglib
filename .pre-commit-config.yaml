@@ -1,3 +1,7 @@
+# Work around for some misconfigured virtualenv
+# https://github.com/pre-commit/pre-commit/issues/1375
+default_language_version:
+  python: python3
 exclude: src/msg_database.c
 
 fail_fast: false
