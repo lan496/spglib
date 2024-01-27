@@ -12,7 +12,7 @@ readme = "python/README.rst"
 # TODO: Switch to dynamic variables scikit-build/scikit-build-core#172
 #dynamic = ["version", "name", "description"]
 dependencies = [
-    "numpy"
+    "numpy>=1.20"
 ]
 authors = [
     {name="Atsushi Togo", email="atz.togo@gmail.com"},
@@ -197,6 +197,7 @@ show_error_codes = true
 # strict = true
 enable_error_code = ["ignore-without-code", "redundant-expr", "truthy-bool"]
 no_strict_optional = true
+exclude = ["_skbuild"]
 
 [tool.codespell]
 ignore-words = "doc/codespell.txt"

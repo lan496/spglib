@@ -6,6 +6,7 @@ copyright = "2009, Atsushi Togo"
 extensions = [
     "sphinx.ext.mathjax",
     "sphinx.ext.viewcode",
+    "sphinx.ext.intersphinx",
     "sphinxcontrib.bibtex",
     "myst_parser",
     "autodoc2",
@@ -21,6 +22,11 @@ source_suffix = {
     ".rst": "restructuredtext",
 }
 
+intersphinx_mapping = {
+    "python": ("https://docs.python.org/3", None),
+    "numpy": ("https://numpy.org/doc/stable/", None),
+}
+
 # -----------------------------------------------------------------------------
 # MyST
 # -----------------------------------------------------------------------------
@@ -34,6 +40,7 @@ myst_enable_extensions = [
     "smartquotes",
     "tasklist",
     "colon_fence",
+    "fieldlist",
 ]
 
 myst_dmath_double_inline = True
