@@ -4,5 +4,5 @@ from spglib.spglib import _expand_cell
 
 def test_expand_cell():
     with pytest.raises(TypeError) as e:
-        _expand_cell(None)
-    assert e.value
+        _expand_cell(([], [], [], [], []))
+    assert str(e.value) == "cell has to be a tuple of 3 or 4 elements."
