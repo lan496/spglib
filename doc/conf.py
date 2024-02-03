@@ -76,7 +76,7 @@ autodoc2_packages = [
         "module": "spglib",
     },
 ]
-autodoc2_hidden_objects = ["undoc", "dunder", "private", "inherited"]
+autodoc2_hidden_objects = ["dunder", "private", "inherited"]
 autodoc2_hidden_regexes = [
     "spglib.get_pointgroup",
     # Layer group
