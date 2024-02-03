@@ -11,6 +11,10 @@ GitHub release pages and in the git history.
 
 ## \[Unreleased\]
 
+### Python interface
+
+- Raise `TypeError` when a given `cell` is invalid.
+
 ## v2.3.0 (27 Jan. 2024)
 
 ### Features
