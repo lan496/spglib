@@ -24,17 +24,17 @@ jobs:
           fetch-depth: 0
       - uses: lukka/get-cmake@latest
       - name: Get test coverage for ${{ matrix.coverage }}
-        uses: lukka/run-cmake@v10.7
+        uses: lukka/run-cmake@v10.8
         with:
           workflowPreset: "ci-coverage-${{ matrix.coverage }}"
       - name: Get lcov data
-        uses: danielealbano/lcov-action@v3
+        uses: danielealbano/lcov-action@v4
         with:
           # Note lcov-action prepends and appends wild-cards *. Account for those
           # https://github.com/danielealbano/lcov-action/issues/11
           remove_patterns: /test/,/cmake-build*/
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           name: ${{ matrix.coverage }} coverage
@@ -63,13 +63,13 @@ jobs:
       - name: Test pytest with coverage
         run: pytest --cov=spglib
       - name: Get lcov data
-        uses: danielealbano/lcov-action@v3
+        uses: danielealbano/lcov-action@v4
         with:
           # Note lcov-action prepends and appends wild-cards *. Account for those
           # https://github.com/danielealbano/lcov-action/issues/11
           remove_patterns: /test/,/cmake-build*/,/tmp/
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           name: python_api coverage
