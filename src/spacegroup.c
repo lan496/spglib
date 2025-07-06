@@ -488,31 +488,95 @@ Spacegroup *spa_search_spacegroup(Primitive const *primitive,
     return spacegroup;
 }
 
-/* Return NULL if failed */
-/* Assume symmetry is transformed in primitive cell. */
+/// Return NULL if failed
+/// Assume symmetry is transformed in primitive cell.
+/// @return spacegroup
+///         Let `prim_lat * tmat = spacegroup->bravais_lattice` and P_c be a
+///         transformation matrix from conventional to primitive. Then, (P_c,
+///         spacegroup->origin_shift)(tmat^-1, 0) transforms DB primitive
+///         symmetry into `symmetry`.
 Spacegroup *spa_search_spacegroup_with_symmetry(Symmetry const *symmetry,
                                                 double const prim_lat[3][3],
                                                 double const symprec) {
-    int i;
-    Spacegroup *spacegroup;
-    Primitive *primitive;
+    int i, j;
+    Spacegroup *reduced_spacegroup, *spacegroup;
+    Primitive *reduced_primitive;
+    Symmetry *reduced_symmetry;
+    double vals[9], reduced_lat[3][3], reduced_lat_inv[3][3], tmat[3][3],
+        tmat_inv[3][3], tmp[3][3];
 
     spacegroup = NULL;
+    reduced_spacegroup = NULL;
+    reduced_primitive = NULL;
+    reduced_symmetry = NULL;
 
-    if ((primitive = prm_alloc_primitive(1)) == NULL) {
-        return 0;
-    }
-    if ((primitive->cell = cel_alloc_cell(1, NOSPIN)) == NULL) {
-        return 0;
-    }
-    mat_copy_matrix_d3(primitive->cell->lattice, prim_lat);
+    // Niggli-reduce prim_lat, which is required for
+    // spa_search_spacegroup_with_symmetry
     for (i = 0; i < 3; i++) {
-        primitive->cell->position[0][i] = 0;
+        for (j = 0; j < 3; j++) {
+            vals[i * 3 + j] = prim_lat[i][j];
+        }
     }
-    spacegroup = search_spacegroup_with_symmetry(
-        primitive, spacegroup_to_hall_number, 230, symmetry, symprec, -1.0);
-    prm_free_primitive(primitive);
-    primitive = NULL;
+    if (!niggli_reduce(vals, symprec, -1)) {
+        return NULL;
+    }
+    for (i = 0; i < 3; i++) {
+        for (j = 0; j < 3; j++) {
+            reduced_lat[i][j] = vals[i * 3 + j];
+        }
+    }
+    if (!mat_inverse_matrix_d3(reduced_lat_inv, reduced_lat, symprec)) {
+        return NULL;
+    }
+    mat_multiply_matrix_d3(tmat_inv, reduced_lat_inv, prim_lat);
+    if (!mat_inverse_matrix_d3(tmat, tmat_inv, symprec)) {
+        return NULL;
+    }
+
+    if ((reduced_primitive = prm_alloc_primitive(1)) == NULL) {
+        return 0;
+    }
+    if ((reduced_primitive->cell = cel_alloc_cell(1, NOSPIN)) == NULL) {
+        return 0;
+    }
+    mat_copy_matrix_d3(reduced_primitive->cell->lattice, prim_lat);
+    for (i = 0; i < 3; i++) {
+        reduced_primitive->cell->position[0][i] = 0;
+    }
+
+    reduced_symmetry = prm_get_primitive_symmetry(tmat, symmetry, symprec);
+    if (reduced_symmetry == NULL) {
+        sym_free_symmetry(reduced_symmetry);
+        return NULL;
+    }
+
+    reduced_spacegroup = search_spacegroup_with_symmetry(
+        reduced_primitive, spacegroup_to_hall_number, 230, reduced_symmetry,
+        symprec, -1.0);
+    prm_free_primitive(reduced_primitive);
+    reduced_primitive = NULL;
+
+    // prim_lat * tmat = reduced_lat
+    // (tmat, 0): symmetry -> reduced_symmetry
+    // (P_c^-1, reduced_spacegroup->origin_shift)(reduced_lat^-1 *
+    // reduced_spacegroup->bravais_lattice, 0): primitive of DB symmetry ->
+    // reduced_symmetry Thus,
+    //  (P_c^-1, reduced_spacegroup->origin_shift)(reduced_lat^-1 *
+    //  reduced_spacegroup->bravais_lattice, 0)(tmat^-1, 0)
+    //    = (P_c^-1, reduced_spacegroup->origin_shift)(reduced_lat^-1 *
+    //    reduced_spacegroup->bravais_lattice * tmat^-1, 0)
+    //  transforms primitive of DB symmetry into `symmetry`.
+    // Therefore,
+    //   - spacegroup->origin_shift = reduced_spacegroup->origin_shift
+    //   - reduced_lat^-1 * reduced_spacegroup->bravais_lattice * tmat^-1 =
+    //   prim_lat^-1 * spacegroup->bravais_lattice
+    //       -> spacegroup->bravais_lattice = reduced_lat * tmat^-1 *
+    //       reduced_lat^-1 * reduced_spacegroup->bravais_lattice
+    spa_copy_spacegroup(spacegroup, reduced_spacegroup);
+    mat_multiply_matrix_d3(tmp, reduced_lat, tmat_inv);
+    mat_multiply_matrix_d3(tmp, tmp, reduced_lat_inv);
+    mat_multiply_matrix_d3(tmp, tmp, reduced_spacegroup->bravais_lattice);
+    mat_copy_matrix_d3(spacegroup->bravais_lattice, tmp);
 
     return spacegroup;
 }
@@ -668,7 +732,14 @@ void spa_copy_spacegroup(Spacegroup *dst, Spacegroup const *src) {
     mat_copy_vector_d3(dst->origin_shift, src->origin_shift);
 }
 
-/* Return NULL if failed */
+/// Return NULL if failed
+/// @return spacegroup
+///         Let `spacegroup->bravais_lattice * change_of_basis ~=
+///         primitive->cell->lattice` and P_c be a transformation matrix from
+///         conventional to primitive. Then, (P_c^-1,
+///         spacegroup->origin_shift)(primitive->cell->lattice^-1 *
+///         spacegroup->bravais_lattice, 0) transforms primitive of DB symmetry
+///         into `symmetry`.
 static Spacegroup *search_spacegroup_with_symmetry(
     Primitive const *primitive, int const candidates[],
     int const num_candidates, Symmetry const *symmetry, double const symprec,
@@ -785,7 +856,11 @@ ret:
     return hall_number;
 }
 
-/* Return 0 if failed */
+/// Return 0 if failed
+/// @note Let `conv_lattice * change_of_basis ~= primitive->cell->lattice` and
+/// P_c be a transformation matrix from conventional to primitive. Then,
+/// (P_c^-1, origin_shift)(change_of_basis^-1, 0) transforms primitive of DB
+/// symmetry into `symmetry`.
 static int search_hall_number(double origin_shift[3], double conv_lattice[3][3],
                               int const candidates[], int const num_candidates,
                               Primitive const *primitive,
@@ -987,7 +1062,13 @@ static Symmetry *get_initial_conventional_symmetry(Centering const centering,
     return conv_symmetry;
 }
 
-/* Return 0 if failed */
+/// Return 0 if failed
+/// @param conv_lattice Initially populated with trial conventional basis
+/// vectors.
+/// @param symmetry Symmetry in `conv_lattice`.
+/// @note Let `conv_lattice * change_of_basis ~= orig_lattice`. (P_c^-1,
+/// origin_shift)(change_of_basis^-1, 0) transforms primitive of DB symmetry
+/// into `symmetry`.
 static int match_hall_symbol_db(
     double origin_shift[3], double conv_lattice[3][3],
     double const (*orig_lattice)[3], int const hall_number,
@@ -1472,6 +1553,12 @@ cont:
     return 0;
 }
 
+/// @param conv_lattice Initially populated with trial conventional basis
+/// vectors.
+/// @param conv_symmetry Symmetry in `conv_lattice`.
+/// @note Let `conv_lattice * change_of_basis ~= orig_lattice`. (P_c^-1,
+/// origin_shift)(change_of_basis^-1, 0) transforms primitive of DB symmetry
+/// into `conv_symmetry`.
 static int match_hall_symbol_db_cubic(double origin_shift[3],
                                       double conv_lattice[3][3],
                                       double const (*orig_lattice)[3],
@@ -1505,6 +1592,12 @@ static int match_hall_symbol_db_cubic(double origin_shift[3],
     return 0;
 }
 
+/// @param conv_lattice Initially populated with trial conventional basis
+/// vectors.
+/// @param conv_symmetry Symmetry in `conv_lattice`.
+/// @note Let `conv_lattice * change_of_basis ~= orig_lattice`. (P_c^-1,
+/// origin_shift)(change_of_basis^-1, 0) transforms primitive of DB symmetry
+/// into `conv_symmetry`.
 static int match_hall_symbol_db_cubic_in_loop(
     double origin_shift[3], double conv_lattice[3][3],
     double const (*orig_lattice)[3], int const i, int const hall_number,
@@ -1522,19 +1615,25 @@ static int match_hall_symbol_db_cubic_in_loop(
     if (orig_lattice != NULL) {
         if (is_equivalent_lattice(tmat, 1, changed_lattice, orig_lattice,
                                   symprec)) {
+            // orig_lattice ~= changed_lattice * tmat
             mat_multiply_matrix_d3(changed_lattice, changed_lattice, tmat);
-            mat_multiply_matrix_d3(change_of_basis, change_of_basis, tmat);
+            // Now, changed_lattice ~= orig_lattice
+            mat_multiply_matrix_d3(
+                change_of_basis, change_of_basis,
+                tmat);  // conv_lattice * change_of_basis ~= orig_lattice
         } else {
             goto cont; /* This is necessary to run through all */
                        /* change_of_basis_ortho. */
         }
     }
 
+    // (change_of_basis, 0): conv_symmetry -> changed_symmetry (in orig_lattice)
     if ((changed_symmetry = get_conventional_symmetry(
              change_of_basis, PRIMITIVE, conv_symmetry)) == NULL) {
         goto cont;
     }
 
+    // (P_c^-1, origin_shift): primitive of DB symmetry -> changed_symmetry
     is_found =
         hal_match_hall_symbol_db(origin_shift, changed_lattice, hall_number,
                                  centering, changed_symmetry, symprec);
@@ -1679,7 +1778,9 @@ static int match_hall_symbol_db_change_of_basis_loop(
     return 0;
 }
 
-/* Return NULL if failed */
+/// @brief Transform `primitive_sym` into conventional by (tmat, 0)(P_c^-1, 0)
+/// where P_c transforms conventional to primitive by `centering`. Return NULL
+/// if failed
 static Symmetry *get_conventional_symmetry(double const tmat[3][3],
                                            Centering const centering,
                                            Symmetry const *primitive_sym) {
@@ -1930,17 +2031,17 @@ static int get_centering_shifts(double shift[3][3], Centering const centering) {
     return multi;
 }
 
-// @brief Return 1 if `lattice` and `orig_lattice` is equivalent.
-//        The equivalence is defined though `mode`.
-// @param[out] tmat Isometric transformation s.t. orig_lattice = lattice * tmat
-// if exists
-// @param[in] mode
-//            mode=0: Equivalent if `lattice` and `orig_lattice` are identical
-//            as matrices. mode=1: Allow to flip axes when abs(P)=I but P!=I.
-//            mode=2: Check equivalence from their metric tensors.
-// @param[in] lattice
-// @param[in] orig_lattice
-// @param[in] symprec
+/// @brief Return 1 if `lattice` and `orig_lattice` is equivalent.
+///        The equivalence is defined though `mode`.
+/// @param[out] tmat Isometric transformation s.t. orig_lattice = lattice * tmat
+/// if exists
+/// @param[in] mode
+///            mode=0: Equivalent if `lattice` and `orig_lattice` are identical
+///            as matrices. mode=1: Allow to flip axes when abs(P)=I but P!=I.
+///            mode=2: Check equivalence from their metric tensors.
+/// @param[in] lattice
+/// @param[in] orig_lattice
+/// @param[in] symprec
 static int is_equivalent_lattice(double tmat[3][3], int const mode,
                                  double const lattice[3][3],
                                  double const orig_lattice[3][3],

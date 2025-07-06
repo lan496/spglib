@@ -1033,6 +1033,7 @@ static void set_translation_with_origin_shift(Symmetry *conv_sym,
     }
 }
 
+/// @brief Transform `conv_sym` by (t_mat, 0)^-1
 static Symmetry *get_primitive_db_symmetry(double const t_mat[3][3],
                                            Symmetry const *conv_sym) {
     int i, j, num_op;

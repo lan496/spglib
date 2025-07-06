@@ -404,4 +404,31 @@ TEST(MagneticDataset, test_with_right_handed_magnetic_lattice) {
     if (dataset) spg_free_magnetic_dataset(dataset);
 }
 
+TEST(MagneticDataset, test_skewed_cell) {
+    double lattice[3][3] = {
+        {0.00000000, 5.24500000, 0.00000000},
+        {6.43450000, -6.43450000, 0.00000000},
+        {1.83190000, 0.00000000, -3.66380000},
+    };
+    double positions[][3] = {
+        {0.64160000, 0.73500000, 0.07080000},
+        {0.82840000, 0.23500000, 0.41420000},
+        {0.35840000, 0.26500000, 0.42920000},
+        {0.17160000, 0.76500000, 0.58580000},
+    };
+    int types[] = {1, 1, 1, 1};
+    double tensors[] = {0, 0, 0, 0};
+    int num_atoms = 4;
+
+    double symprec = 1e-5;
+
+    SpglibMagneticDataset *dataset;
+    dataset = spg_get_magnetic_dataset(lattice, positions, types, tensors,
+                                       0 /* tensor_rank */, num_atoms,
+                                       0 /* is_axial */, symprec);
+    EXPECT_EQ(spg_get_error_code(), SpglibError::SPGLIB_SUCCESS);
+
+    if (dataset) spg_free_magnetic_dataset(dataset);
+}
+
 // TODO: test get_magnetic_dataset with distorted positions

@@ -8554,6 +8554,10 @@ static int is_match_database(int const hall_number, double const shift[3],
                              Centering const centering,
                              Symmetry const *symmetry, double const symprec);
 
+/// @brief Finds origin shift to match `symmetry` with DB symmetry
+/// @note Let P_c be a transformation matrix from conventional to primitive by
+/// `centering`. Then, (P_c^-1, origin_shift) transforms primitive of DB
+/// symmetry into `symmetry` if 1 is returned.
 int hal_match_hall_symbol_db(double origin_shift[3],
                              double const bravais_lattice[3][3],
                              int const hall_number, Centering const centering,
@@ -8982,6 +8986,10 @@ static void unpack_generators(int rot[3][3][3], int const generators[3][9]) {
     }
 }
 
+/// @brief Finds origin shift to match given symmetry with DB symmetry
+/// @note Let P_c be a transformation matrix from conventional to primitive by
+/// `centering`. Then, (P_c^-1, shift) transforms primitive of DB symmetry into
+/// `symmetry` if 1 is returned.
 static int is_hall_symbol(double shift[3], int const hall_number,
                           double const primitive_lattice[3][3],
                           Symmetry const *symmetry, Centering const centering,
@@ -9026,6 +9034,7 @@ found:
     return 1;
 }
 
+/// @brief Find translations with given rotations from `symmetry`
 static int get_translations(double trans[3][3], Symmetry const *symmetry,
                             int const rot[3][3][3]) {
     int i, j;
@@ -9215,6 +9224,12 @@ found:
     return 1;
 }
 
+/// @brief Match symmetry with given hall_number and origin shift
+/// @note Let p := `origin_shift`  and P_c be a transformation matrix from
+/// conventional to primitive by `centering`. Then, (P_c, 0)(E, -p) transforms
+/// given symmetry into primitive of DB symmetry if 1 is returned. Conversely,
+/// since (P_c, 0)(E, -p) = (P_c, -P_c p) = (P_c^-1, p)^-1, (P_c^-1, p)
+/// transforms primitive of DB symmetry into given symmetry.
 static int is_match_database(int const hall_number,
                              double const origin_shift[3],
                              double const primitive_lattice[3][3],
@@ -9238,10 +9253,28 @@ static int is_match_database(int const hall_number,
         for (j = 0; j < operation_index[0]; j++) {
             spgdb_get_operation(rot_db, trans_db, operation_index[1] + j);
             if (mat_check_identity_matrix_i3(symmetry->rot[i], rot_db)) {
+                // Transform to primitive setting
+                // Let P_c be a transformation matrix from conventional to
+                // primitive:
+                //     (a_p, b_p, c_p) = (a_c, b_c, c_c) P_c,
+                // For example, P_c = [[0, 0.5, 0.5], [0.5, 0, 0.5], [0.5, 0.5,
+                // 0]] for F centering
+
+                // Then, transform symmetry operation (W, w) in conventional to
+                // that in primitive:
+                //   (W', w') := (P_c, 0)^-1 (W, w) (P_c, 0) = (P_c^-1 W P_c,
+                //   P_c^-1 w).
+                // Note that P_c^-1 is an integer matrix by construction.
                 transform_translation(trans_db_prim, centering, trans_db);
                 transform_translation(trans_prim, centering,
                                       symmetry->trans[i]);
                 transform_rotation(rot_prim, centering, rot_db);
+
+                // Now, let p := `origin_shift`. Transform the primitive
+                // symmetry operation (W', w') by (E, -p):
+                //     (E, -p)^-1 (W', w') (E, -p) = (W', w' - W' p + p)
+                // Check if two primitive symmetry operations (W', w' - W' p +
+                // p) and (W_db', w_db') are equivalent
                 for (k = 0; k < 3; k++) {
                     diff[k] =
                         trans_prim[k] - trans_db_prim[k] + origin_shift[k];
